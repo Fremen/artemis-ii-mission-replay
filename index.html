@@ -1,0 +1,1681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Artemis II Mission Replay</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; color: #fff; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; overflow: hidden; height: 100vh; width: 100vw; }
+  #canvas-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+
+  .header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 24px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0) 100%);
+    pointer-events: none;
+  }
+  .header-left { display: flex; align-items: center; gap: 14px; }
+  .project-badge {
+    width: 46px; height: 46px; border-radius: 50%;
+    background: radial-gradient(circle, #1a3a6e, #0b1d3a);
+    display: flex; align-items: center; justify-content: center;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 900; font-size: 8px;
+    letter-spacing: 1px; border: 2px solid rgba(100,160,255,0.4); color: #7ab8ff;
+  }
+  .mission-title {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 22px; font-weight: 700; letter-spacing: 3px;
+    background: linear-gradient(135deg, #7ab8ff, #ffffff, #ffa862);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .mission-subtitle { font-size: 11px; color: rgba(255,255,255,0.5); letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; }
+  .header-right { text-align: right; }
+  .utc-clock { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 18px; color: #7ab8ff; letter-spacing: 2px; }
+  .met-clock { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; color: #ffa862; letter-spacing: 1px; margin-top: 2px; }
+  .header-note { font-size: 8px; color: rgba(255,255,255,0.38); margin-top: 4px; max-width: 330px; }
+
+  .stats-panel {
+    position: fixed; left: 18px; top: 86px; z-index: 10; width: 270px;
+    background: rgba(8, 14, 28, 0.88); border: 1px solid rgba(100,160,255,0.15);
+    border-radius: 12px; padding: 16px; backdrop-filter: blur(20px);
+  }
+  .panel-title {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10px; letter-spacing: 2px;
+    color: rgba(122,184,255,0.7); text-transform: uppercase; margin-bottom: 12px;
+    padding-bottom: 7px; border-bottom: 1px solid rgba(100,160,255,0.1);
+  }
+  .stat-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; }
+  .stat-label { font-size: 10px; color: rgba(255,255,255,0.45); text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-value { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; color: #fff; }
+  .stat-value.hl { color: #7ab8ff; }
+  .stat-value.warn { color: #ffa862; }
+  .stat-value.ok { color: #6bffa1; }
+  .stat-divider { height: 1px; background: rgba(100,160,255,0.08); margin: 6px 0; }
+
+  .crew-panel {
+    position: fixed; left: 18px; bottom: 18px; z-index: 10; width: 270px;
+    background: rgba(8, 14, 28, 0.88); border: 1px solid rgba(100,160,255,0.15);
+    border-radius: 12px; padding: 16px; backdrop-filter: blur(20px);
+  }
+  .crew-member { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
+  .crew-avatar {
+    width: 30px; height: 30px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600; flex-shrink: 0;
+  }
+  .crew-avatar.c1 { background: rgba(122,184,255,0.2); color: #7ab8ff; border: 1px solid rgba(122,184,255,0.3); }
+  .crew-avatar.c2 { background: rgba(107,255,161,0.2); color: #6bffa1; border: 1px solid rgba(107,255,161,0.3); }
+  .crew-avatar.c3 { background: rgba(255,168,98,0.2); color: #ffa862; border: 1px solid rgba(255,168,98,0.3); }
+  .crew-avatar.c4 { background: rgba(200,140,255,0.2); color: #c88cff; border: 1px solid rgba(200,140,255,0.3); }
+  .crew-name { font-size: 12px; font-weight: 500; }
+  .crew-role { font-size: 9px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.5px; }
+
+  .timeline-panel {
+    position: fixed; right: 18px; top: 86px; z-index: 10; width: 290px;
+    max-height: calc(100vh - 106px); overflow-y: auto;
+    background: rgba(8, 14, 28, 0.88); border: 1px solid rgba(100,160,255,0.15);
+    border-radius: 12px; padding: 16px; backdrop-filter: blur(20px);
+  }
+  .timeline-panel::-webkit-scrollbar { width: 3px; }
+  .timeline-panel::-webkit-scrollbar-track { background: transparent; }
+  .timeline-panel::-webkit-scrollbar-thumb { background: rgba(100,160,255,0.2); border-radius: 2px; }
+  .tl-item { display: flex; gap: 10px; padding: 7px 0; position: relative; cursor: pointer; border-radius: 6px; padding-left: 4px; margin-left: -4px; transition: background 0.15s; }
+  .tl-item:hover { background: rgba(122,184,255,0.08); }
+  .tl-item:not(:last-child)::after {
+    content: ''; position: absolute; left: 8px; top: 26px; bottom: -2px;
+    width: 1px; background: rgba(100,160,255,0.12);
+  }
+  .tl-dot {
+    width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; margin-top: 2px;
+    font-size: 7px; font-weight: 700; color: rgba(0,0,0,0.6);
+  }
+  .tl-dot.done { background: rgba(107,255,161,0.25); border: 2px solid #6bffa1; }
+  .tl-dot.now { background: rgba(122,184,255,0.25); border: 2px solid #7ab8ff; animation: pulse 2s ease-in-out infinite; }
+  .tl-dot.wait { background: rgba(255,255,255,0.04); border: 2px solid rgba(255,255,255,0.12); }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(122,184,255,0.4); } 50% { box-shadow: 0 0 0 5px rgba(122,184,255,0); } }
+  .tl-time { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 9px; color: rgba(122,184,255,0.55); letter-spacing: 1px; margin-bottom: 2px; }
+  .tl-name { font-size: 11px; font-weight: 500; }
+  .tl-desc { font-size: 9px; color: rgba(255,255,255,0.3); line-height: 1.4; }
+
+  .bottom-bar {
+    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+    z-index: 10; display: flex; gap: 10px; align-items: center; pointer-events: all;
+  }
+  .view-btn {
+    background: rgba(8,14,28,0.88); border: 1px solid rgba(100,160,255,0.2);
+    border-radius: 8px; padding: 7px 14px; color: rgba(255,255,255,0.55);
+    font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 10px; letter-spacing: 1px;
+    text-transform: uppercase; cursor: pointer; transition: all 0.3s; backdrop-filter: blur(20px);
+  }
+  .view-btn:hover, .view-btn.active { border-color: rgba(122,184,255,0.5); color: #7ab8ff; background: rgba(122,184,255,0.1); }
+  .speed-control {
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(8,14,28,0.88); border: 1px solid rgba(100,160,255,0.2);
+    border-radius: 8px; padding: 7px 12px; backdrop-filter: blur(20px);
+  }
+  .speed-label { font-size: 9px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 1px; }
+  .speed-value { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; color: #ffa862; min-width: 36px; text-align: center; }
+  .speed-btn {
+    background: none; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px;
+    color: #fff; width: 22px; height: 22px; cursor: pointer; font-size: 13px;
+    display: flex; align-items: center; justify-content: center; transition: all 0.2s;
+  }
+  .speed-btn:hover { border-color: #ffa862; color: #ffa862; }
+
+  .phase-indicator { position: fixed; top: 76px; left: 50%; transform: translateX(-50%); z-index: 10; text-align: center; pointer-events: none; }
+  .phase-name { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; letter-spacing: 3px; color: #7ab8ff; text-transform: uppercase; }
+  .phase-detail { font-size: 10px; color: rgba(255,255,255,0.4); margin-top: 3px; }
+
+  .countdown-banner {
+    position: fixed; top: 62px; left: 50%; transform: translateX(-50%); z-index: 12;
+    display: flex; align-items: center; gap: 14px;
+    background: rgba(8,14,28,0.92); border: 1px solid rgba(255,168,98,0.3);
+    border-radius: 10px; padding: 8px 18px; backdrop-filter: blur(20px);
+    transition: opacity 0.5s;
+  }
+  .countdown-banner.hidden { opacity: 0; pointer-events: none; }
+  .countdown-label { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 9px; letter-spacing: 2px; color: rgba(255,255,255,0.45); text-transform: uppercase; }
+  .countdown-time { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 16px; font-weight: 700; color: #ffa862; letter-spacing: 2px; }
+  .countdown-date { font-size: 10px; color: rgba(255,255,255,0.35); }
+  .mode-toggle {
+    background: rgba(8,14,28,0.88); border: 1px solid rgba(100,160,255,0.2);
+    border-radius: 8px; padding: 7px 14px; color: rgba(255,255,255,0.55);
+    font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 10px; letter-spacing: 1px;
+    text-transform: uppercase; cursor: pointer; transition: all 0.3s; backdrop-filter: blur(20px);
+  }
+  .mode-toggle:hover, .mode-toggle.active { border-color: rgba(255,168,98,0.5); color: #ffa862; background: rgba(255,168,98,0.1); }
+
+  @media (max-width: 1100px) {
+    .stats-panel, .crew-panel { display: none; }
+    .timeline-panel { left: 18px; right: 18px; width: auto; top: auto; bottom: 72px; max-height: 180px; }
+  }
+</style>
+</head>
+<body>
+<div id="canvas-container"></div>
+
+<div class="header">
+  <div class="header-left">
+    <div class="project-badge">UNOFFICIAL</div>
+    <div>
+      <div class="mission-title">ARTEMIS II</div>
+      <div class="mission-subtitle">Independent interactive mission replay</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="utc-clock" id="utc-clock">--:--:-- UTC</div>
+    <div class="met-clock" id="met-clock">MET --:--:--:--</div>
+    <div class="header-note">Illustrative data — not live telemetry. Independent project; not affiliated with or endorsed by NASA or CSA.</div>
+  </div>
+</div>
+
+<div class="phase-indicator">
+  <div class="phase-name" id="phase-name">PRE-LAUNCH</div>
+  <div class="phase-detail" id="phase-detail">Awaiting launch window</div>
+</div>
+
+<div class="stats-panel">
+  <div class="panel-title">Illustrative Mission Data</div>
+  <div class="stat-row"><span class="stat-label">Altitude</span><span class="stat-value hl" id="s-alt">--</span></div>
+  <div class="stat-row"><span class="stat-label">Velocity</span><span class="stat-value" id="s-vel">--</span></div>
+  <div class="stat-row"><span class="stat-label">Dist. from Earth</span><span class="stat-value hl" id="s-de">--</span></div>
+  <div class="stat-divider"></div>
+  <div class="stat-row"><span class="stat-label">Dist. from Moon</span><span class="stat-value warn" id="s-dm">--</span></div>
+  <div class="stat-row"><span class="stat-label">Perilune</span><span class="stat-value">7,408 km</span></div>
+  <div class="stat-divider"></div>
+  <div class="stat-row"><span class="stat-label">Launch Site</span><span class="stat-value" style="font-size:9px">LC-39B, KSC</span></div>
+  <div class="stat-row"><span class="stat-label">Vehicle</span><span class="stat-value" style="font-size:9px">SLS Block 1</span></div>
+  <div class="stat-row"><span class="stat-label">Spacecraft</span><span class="stat-value" style="font-size:9px">Orion MPCV</span></div>
+  <div class="stat-divider"></div>
+  <div class="stat-row"><span class="stat-label">Duration</span><span class="stat-value">~10 days</span></div>
+  <div class="stat-row"><span class="stat-label">Re-entry Speed</span><span class="stat-value warn">40,000 km/h</span></div>
+  <div class="stat-row"><span class="stat-label">Status</span><span class="stat-value ok" id="s-status">NOMINAL</span></div>
+</div>
+
+<div class="crew-panel">
+  <div class="panel-title">Crew</div>
+  <div class="crew-member"><div class="crew-avatar c1">RW</div><div><div class="crew-name">Reid Wiseman</div><div class="crew-role">Commander &middot; NASA</div></div></div>
+  <div class="crew-member"><div class="crew-avatar c2">VG</div><div><div class="crew-name">Victor Glover</div><div class="crew-role">Pilot &middot; NASA</div></div></div>
+  <div class="crew-member"><div class="crew-avatar c3">CK</div><div><div class="crew-name">Christina Koch</div><div class="crew-role">Mission Specialist &middot; NASA</div></div></div>
+  <div class="crew-member"><div class="crew-avatar c4">JH</div><div><div class="crew-name">Jeremy Hansen</div><div class="crew-role">Mission Specialist &middot; CSA</div></div></div>
+</div>
+
+<div class="timeline-panel">
+  <div class="panel-title">Mission Timeline &mdash; 15 Phases</div>
+  <div id="timeline-container"></div>
+</div>
+
+<div class="bottom-bar">
+  <button class="view-btn active" onclick="setView('overview')">Overview</button>
+  <button class="view-btn" onclick="setView('earth')">Earth Orbits</button>
+  <button class="view-btn" onclick="setView('lunar')">Lunar Flyby</button>
+  <button class="view-btn" onclick="setView('follow')">Follow Orion</button>
+  <div class="speed-control">
+    <span class="speed-label">Speed</span>
+    <button class="speed-btn" onclick="changeSpeed(-1)">&minus;</button>
+    <span class="speed-value" id="speed-value">50x</span>
+    <button class="speed-btn" onclick="changeSpeed(1)">+</button>
+  </div>
+  <button class="mode-toggle" id="mode-toggle" onclick="restartReplay()">Restart Replay</button>
+</div>
+
+<div class="countdown-banner" id="countdown-banner">
+  <div class="countdown-label">Launch In</div>
+  <div class="countdown-time" id="countdown-time">--:--:--</div>
+  <div class="countdown-date">1 Apr 22:24 UTC</div>
+</div>
+
+<script src="vendor/three.min.js"></script>
+<script>
+/* ================================================================
+   ARTEMIS II MISSION REPLAY
+   Simplified educational visualization based on public mission information
+   15 numbered phases, figure-8 free-return trajectory
+   ================================================================ */
+
+// ---- Mission constants ----
+const LAUNCH = new Date('2026-04-01T22:24:00Z').getTime();
+const SPLASHDOWN = new Date('2026-04-11T00:06:00Z').getTime();
+const MISSION_DUR = SPLASHDOWN - LAUNCH;
+
+// Simplified 15-phase timeline (UTC)
+const EVENTS = [
+  { t:'2026-04-01T22:24:00Z', n:1,  name:'Launch', desc:'SLS lifts off from Pad 39B, Kennedy Space Center', ph:'launch' },
+  { t:'2026-04-01T22:26:10Z', n:2,  name:'SRB Jettison', desc:'Solid rocket boosters, fairings & launch abort system jettisoned', ph:'launch' },
+  { t:'2026-04-01T22:32:00Z', n:3,  name:'Core Stage MECO', desc:'Main engine cutoff; core stage separates, ICPS ignites', ph:'launch' },
+  { t:'2026-04-01T22:46:00Z', n:4,  name:'Perigee Raise Manoeuvre', desc:'Orion raises perigee on initial orbit', ph:'earth_orbit' },
+  { t:'2026-04-01T23:50:00Z', n:5,  name:'Apogee Raise Burn', desc:'Raise to high Earth orbit; begin 24-hr checkout of spacecraft', ph:'earth_orbit' },
+  { t:'2026-04-02T10:00:00Z', n:6,  name:'Prox Ops Demo', desc:'Proximity operations & manual handling demo (~2 hours)', ph:'earth_orbit' },
+  { t:'2026-04-02T22:30:00Z', n:7,  name:'Trans-Lunar Injection', desc:'Orion main engine fires — commits to free-return lunar trajectory', ph:'tli' },
+  { t:'2026-04-03T04:00:00Z', n:8,  name:'High Earth Orbit Checkout', desc:'Life support, exercise & habitation equipment evaluation', ph:'outbound' },
+  { t:'2026-04-03T08:00:00Z', n:9,  name:'ICPS Disposal Burn', desc:'Interim Cryogenic Propulsion Stage disposed into heliocentric orbit', ph:'outbound' },
+  { t:'2026-04-03T12:00:00Z', n:10, name:'Outbound Transit', desc:'4-day coast to the Moon along free-return trajectory', ph:'outbound' },
+  { t:'2026-04-06T10:00:00Z', n:11, name:'Lunar Flyby', desc:'Far-side flyby at ~7,400 km (4,000 nmi) above lunar surface', ph:'lunar_flyby' },
+  { t:'2026-04-06T16:00:00Z', n:12, name:'Trans-Earth Return', desc:'Return trajectory correction burns; ~4-day coast home', ph:'return' },
+  { t:'2026-04-10T18:00:00Z', n:13, name:'CM / SM Separation', desc:'Crew module separates from European Service Module', ph:'reentry' },
+  { t:'2026-04-10T23:30:00Z', n:14, name:'Entry Interface', desc:'Atmosphere re-entry at 40,000 km/h — fastest crewed return ever', ph:'reentry' },
+  { t:'2026-04-11T00:06:00Z', n:15, name:'Splashdown', desc:'Pacific Ocean, ~80 km off San Diego. Recovery by USS ship', ph:'splashdown' },
+];
+
+// ---- Three.js ----
+const container = document.getElementById('canvas-container');
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 50000);
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+container.appendChild(renderer.domElement);
+
+// ---- Scale: 1 unit ≈ 1 000 km ----
+const Re = 6.371;          // Earth radius
+const Rm = 1.737;          // Moon radius
+const D  = 384.4;          // Earth–Moon distance
+const PERILUNE = 7.408;    // 4000 nmi ≈ 7408 km above surface
+
+// ---- Stars ----
+(function(){
+  const g = new THREE.BufferGeometry();
+  const p = new Float32Array(18000*3), c = new Float32Array(18000*3);
+  for(let i=0;i<18000;i++){
+    const r=8000+Math.random()*14000, th=Math.random()*Math.PI*2, ph=Math.acos(2*Math.random()-1);
+    p[i*3]=r*Math.sin(ph)*Math.cos(th); p[i*3+1]=r*Math.sin(ph)*Math.sin(th); p[i*3+2]=r*Math.cos(ph);
+    const b=0.5+Math.random()*0.5; c[i*3]=b*(0.85+Math.random()*0.15); c[i*3+1]=b*(0.9+Math.random()*0.1); c[i*3+2]=b;
+  }
+  g.setAttribute('position',new THREE.BufferAttribute(p,3));
+  g.setAttribute('color',new THREE.BufferAttribute(c,3));
+  scene.add(new THREE.Points(g, new THREE.PointsMaterial({size:1.8,vertexColors:true,sizeAttenuation:true})));
+})();
+
+// ---- Lights ----
+const sun = new THREE.DirectionalLight(0xffffff,1.8); sun.position.set(500,200,800); scene.add(sun);
+scene.add(new THREE.AmbientLight(0x223355,0.4));
+
+// ---- Earth ----
+function makeEarth(){
+  const W=4096, H=2048;
+  const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+  const c=cv.getContext('2d');
+
+  // --- Deep ocean gradient with latitude variation ---
+  for(let y=0;y<H;y++){
+    const lat=1-y/H; // 1=north pole, 0=south pole
+    const depth = Math.sin(lat*Math.PI); // deeper at equator
+    const r=Math.round(10+depth*18), g=Math.round(30+depth*50), b=Math.round(60+depth*90);
+    c.fillStyle=`rgb(${r},${g},${b})`;
+    c.fillRect(0,y,W,1);
+  }
+
+  // --- Continents using detailed polygon paths (equirectangular projection) ---
+  // Helper: lon/lat (-180..180, -90..90) → canvas px
+  function ll(lon,lat){ return [((lon+180)/360)*W, ((90-lat)/180)*H]; }
+  function landShape(coords, fill, stroke){
+    c.beginPath();
+    const [sx,sy]=ll(coords[0][0],coords[0][1]);
+    c.moveTo(sx,sy);
+    for(let i=1;i<coords.length;i++){ const [px,py]=ll(coords[i][0],coords[i][1]); c.lineTo(px,py); }
+    c.closePath();
+    c.fillStyle=fill; c.fill();
+    if(stroke){ c.strokeStyle=stroke; c.lineWidth=1.5; c.stroke(); }
+  }
+
+  const GREEN='#1a6b2a', DGREEN='#14581f', LTGREEN='#2a8438', DESERT='#8a7a50', TUNDRA='#5a6e4a';
+
+  // North America (detailed outline)
+  landShape([[-130,55],[-140,60],[-165,62],[-168,55],[-162,54],[-153,58],[-148,61],[-140,60],[-130,55]], DGREEN); // Alaska
+  landShape([[-130,55],[-125,50],[-124,46],[-118,34],[-110,32],[-105,30],[-100,28],[-97,26],[-95,29],[-90,30],[-85,30],[-82,25],[-80,26],[-82,30],[-75,35],[-70,42],[-67,45],[-65,47],[-68,49],[-60,47],[-55,50],[-58,52],[-65,55],[-75,58],[-80,60],[-85,63],[-90,65],[-100,68],[-110,70],[-120,70],[-130,65],[-130,55]], GREEN);
+  // Mexico / Central America
+  landShape([[-118,34],[-110,32],[-105,30],[-100,28],[-97,26],[-96,20],[-92,18],[-90,16],[-86,15],[-84,14],[-82,10],[-80,8],[-78,8],[-77,9],[-80,15],[-85,16],[-87,18],[-92,20],[-95,20],[-100,22],[-105,24],[-110,28],[-118,34]], LTGREEN);
+
+  // South America
+  landShape([[-80,8],[-77,10],[-73,12],[-70,12],[-65,10],[-60,6],[-55,4],[-51,0],[-48,-2],[-45,-5],[-42,-8],[-40,-12],[-38,-15],[-36,-10],[-35,-5],[-35,-2],[-40,0],[-48,2],[-52,3],[-55,6],[-58,7],[-62,10],[-65,11],[-70,12],[-73,12],[-77,10],[-80,8]], GREEN);
+  landShape([[-40,-12],[-42,-18],[-45,-22],[-48,-25],[-50,-28],[-52,-30],[-53,-33],[-60,-35],[-65,-38],[-68,-42],[-68,-48],[-70,-52],[-72,-50],[-73,-45],[-72,-40],[-70,-38],[-68,-35],[-65,-30],[-60,-28],[-57,-25],[-52,-22],[-48,-18],[-44,-15],[-40,-12]], GREEN);
+
+  // Europe
+  landShape([[-10,36],[-8,38],[-9,43],[-5,44],[-2,43],[0,44],[3,43],[5,44],[8,44],[10,46],[7,48],[5,48],[2,49],[0,50],[-2,51],[-5,52],[-5,54],[-3,56],[-3,58],[5,58],[8,56],[10,55],[12,55],[12,57],[10,60],[5,62],[8,64],[12,65],[15,68],[18,70],[22,70],[26,68],[30,65],[30,62],[28,58],[25,55],[22,52],[20,50],[22,48],[20,45],[18,42],[16,40],[14,38],[12,38],[10,40],[8,42],[5,44],[3,43],[0,44],[-2,43],[-5,44],[-9,43],[-8,38],[-10,36]], TUNDRA);
+
+  // Africa
+  landShape([[-15,12],[-17,15],[-16,20],[-12,24],[-8,28],[-5,32],[-3,35],[0,36],[5,37],[10,37],[12,33],[15,32],[20,33],[25,32],[30,30],[33,28],[35,25],[38,22],[40,18],[42,15],[44,12],[46,8],[48,5],[50,2],[50,0],[48,-2],[45,-5],[42,-8],[40,-12],[38,-15],[35,-20],[33,-25],[30,-28],[28,-30],[25,-32],[22,-34],[20,-34],[18,-30],[18,-25],[15,-20],[12,-15],[10,-10],[8,-5],[5,0],[3,2],[0,5],[-3,8],[-5,10],[-8,12],[-10,12],[-12,12],[-15,12]], GREEN);
+  // Sahara overlay
+  landShape([[-15,15],[-12,20],[-8,25],[-3,30],[5,33],[10,33],[15,30],[20,30],[25,28],[30,25],[33,22],[35,18],[32,15],[28,12],[22,10],[15,10],[10,12],[5,13],[0,12],[-5,13],[-10,13],[-15,15]], DESERT);
+
+  // Asia (simplified but detailed)
+  landShape([[30,30],[35,33],[40,38],[42,42],[45,45],[50,48],[55,52],[60,55],[65,58],[70,60],[75,62],[80,65],[85,68],[90,70],[95,72],[100,70],[105,68],[110,65],[115,60],[120,55],[125,50],[128,48],[130,45],[132,42],[130,40],[125,38],[120,35],[115,33],[110,30],[105,28],[100,25],[105,22],[108,18],[107,14],[105,10],[103,5],[100,2],[98,8],[95,12],[90,15],[85,18],[80,20],[75,22],[72,25],[68,28],[65,30],[60,32],[55,35],[50,38],[45,40],[42,42],[40,38],[35,33],[30,30]], GREEN);
+  // Central Asian steppe/desert
+  landShape([[45,35],[50,38],[55,42],[60,44],[65,45],[70,42],[75,38],[70,35],[65,33],[60,32],[55,35],[50,35],[45,35]], DESERT);
+
+  // Australia
+  landShape([[115,-12],[118,-15],[120,-18],[122,-22],[124,-25],[128,-28],[130,-30],[133,-32],[135,-34],[138,-35],[140,-37],[142,-38],[145,-38],[148,-37],[150,-35],[152,-33],[153,-28],[152,-25],[150,-22],[148,-18],[145,-15],[140,-13],[135,-12],[130,-12],[125,-13],[120,-14],[118,-13],[115,-12]], DESERT);
+  // Eastern Australia green belt
+  landShape([[148,-18],[150,-22],[152,-25],[153,-28],[152,-33],[150,-35],[148,-37],[146,-35],[146,-30],[147,-25],[148,-20],[148,-18]], LTGREEN);
+
+  // Greenland
+  landShape([[-55,60],[-50,62],[-45,65],[-40,68],[-35,72],[-30,76],[-35,80],[-42,82],[-50,82],[-55,80],[-58,76],[-60,72],[-58,68],[-55,65],[-55,60]], '#c0d4d8');
+
+  // --- Ice caps ---
+  c.fillStyle='rgba(210,225,235,0.7)';
+  c.fillRect(0, H-70, W, 70); // Antarctica
+  c.fillStyle='rgba(200,220,235,0.35)';
+  c.fillRect(0,0,W,40); // North pole ice
+
+  // --- Coastline highlights ---
+  c.globalCompositeOperation='lighter';
+  c.strokeStyle='rgba(40,90,160,0.12)'; c.lineWidth=3;
+
+  // --- Ocean texture (subtle depth variation) ---
+  c.globalCompositeOperation='source-over';
+  for(let i=0;i<15000;i++){
+    const ox=Math.random()*W, oy=Math.random()*H;
+    c.fillStyle=`rgba(${Math.random()>0.5?20:8},${Math.random()>0.5?50:30},${Math.random()>0.5?100:70},${Math.random()*0.04})`;
+    c.fillRect(ox,oy,3,3);
+  }
+
+  // --- Clouds (wispy, varied) ---
+  c.globalCompositeOperation='screen';
+  for(let i=0;i<120;i++){
+    const cx=Math.random()*W, cy=100+Math.random()*(H-200);
+    const cw=60+Math.random()*250, ch=3+Math.random()*8;
+    const cg=c.createRadialGradient(cx,cy,0,cx,cy,cw*0.5);
+    cg.addColorStop(0,'rgba(255,255,255,0.06)');
+    cg.addColorStop(1,'rgba(255,255,255,0)');
+    c.fillStyle=cg;
+    c.fillRect(cx-cw/2,cy-ch/2,cw,ch);
+  }
+  c.globalCompositeOperation='source-over';
+
+  // --- City lights (faint dots on land, visible from space) ---
+  const cityCoords = [[-74,40],[-87,41],[-118,34],[-43,-22],[-3,51],[2,48],[12,52],[37,55],[28,41],[31,30],[77,28],[121,31],[139,35],[151,-33],[-58,-34],[13,52],[103,1],[100,13],[126,37],[116,39]];
+  cityCoords.forEach(([lon,lat])=>{
+    const [px,py]=ll(lon,lat);
+    c.fillStyle='rgba(255,220,140,0.25)';
+    c.beginPath(); c.arc(px,py,3,0,Math.PI*2); c.fill();
+  });
+
+  const tex=new THREE.CanvasTexture(cv);
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  const earth=new THREE.Mesh(
+    new THREE.SphereGeometry(Re,128,96),
+    new THREE.MeshPhongMaterial({map:tex,specular:new THREE.Color(0x222244),shininess:18})
+  );
+  scene.add(earth);
+  // Atmosphere inner
+  scene.add(new THREE.Mesh(new THREE.SphereGeometry(Re*1.018,96,48),
+    new THREE.MeshPhongMaterial({color:0x4488ff,transparent:true,opacity:0.12,side:THREE.FrontSide})));
+  // Atmosphere outer glow
+  scene.add(new THREE.Mesh(new THREE.SphereGeometry(Re*1.05,96,48),
+    new THREE.MeshBasicMaterial({color:0x3366cc,transparent:true,opacity:0.045,side:THREE.BackSide})));
+  return earth;
+}
+const earth = makeEarth();
+
+// KSC marker (28.6°N 80.6°W)
+function ll2v(lat,lon,r){
+  const ph=(90-lat)*Math.PI/180, th=(lon+180)*Math.PI/180;
+  return new THREE.Vector3(-r*Math.sin(ph)*Math.cos(th), r*Math.cos(ph), r*Math.sin(ph)*Math.sin(th));
+}
+const kscP = ll2v(28.6,-80.6,Re*1.008);
+const kscDot = new THREE.Mesh(new THREE.SphereGeometry(0.1,12,12),new THREE.MeshBasicMaterial({color:0xff4444}));
+kscDot.position.copy(kscP); scene.add(kscDot);
+const kscRingG = new THREE.RingGeometry(0.16,0.22,32);
+const kscRingM = new THREE.MeshBasicMaterial({color:0xff4444,transparent:true,opacity:0.5,side:THREE.DoubleSide});
+const kscRing = new THREE.Mesh(kscRingG,kscRingM); kscRing.position.copy(kscP); kscRing.lookAt(0,0,0); scene.add(kscRing);
+
+// Splashdown marker (Pacific ~32°N 117°W)
+const splashP = ll2v(32,-117.5,Re*1.008);
+const splashDot = new THREE.Mesh(new THREE.SphereGeometry(0.1,12,12),new THREE.MeshBasicMaterial({color:0x6bffa1}));
+splashDot.position.copy(splashP); scene.add(splashDot);
+
+// ---- Moon ----
+function makeMoon(){
+  const W=2048, H=1024;
+  const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+  const x=cv.getContext('2d');
+
+  // --- Base highland surface with subtle variation ---
+  for(let py=0;py<H;py++){
+    for(let px=0;px<W;px+=4){
+      const v=125+Math.random()*30;
+      x.fillStyle=`rgb(${v-5},${v-3},${v})`;
+      x.fillRect(px,py,4,1);
+    }
+  }
+
+  // --- Lunar Maria (dark basaltic plains) - approximate positions ---
+  // Mare Imbrium, Serenitatis, Tranquillitatis, Crisium, Nubium, Humorum, Frigoris, Oceanus Procellarum
+  const maria = [
+    {cx:620,cy:340,rx:110,ry:100,col:'rgba(55,55,60,0.5)'},   // Imbrium
+    {cx:780,cy:340,rx:65,ry:55,col:'rgba(50,50,58,0.45)'},     // Serenitatis
+    {cx:830,cy:420,rx:70,ry:60,col:'rgba(48,48,55,0.45)'},     // Tranquillitatis
+    {cx:920,cy:340,rx:45,ry:50,col:'rgba(52,52,58,0.4)'},      // Crisium
+    {cx:680,cy:520,rx:55,ry:45,col:'rgba(55,55,60,0.35)'},     // Nubium
+    {cx:560,cy:510,rx:40,ry:35,col:'rgba(50,50,58,0.35)'},     // Humorum
+    {cx:700,cy:220,rx:120,ry:30,col:'rgba(52,52,58,0.3)'},     // Frigoris
+    {cx:480,cy:400,rx:130,ry:120,col:'rgba(50,50,58,0.4)'},    // Oceanus Procellarum
+  ];
+  maria.forEach(m=>{
+    // Soft radial fill for natural edges
+    const g=x.createRadialGradient(m.cx,m.cy,0,m.cx,m.cy,Math.max(m.rx,m.ry));
+    g.addColorStop(0,m.col);
+    g.addColorStop(0.7,m.col);
+    g.addColorStop(1,'rgba(100,100,105,0)');
+    x.fillStyle=g;
+    x.beginPath(); x.ellipse(m.cx,m.cy,m.rx*1.3,m.ry*1.3,0,0,Math.PI*2); x.fill();
+    // Core
+    x.fillStyle=m.col;
+    x.beginPath(); x.ellipse(m.cx,m.cy,m.rx,m.ry,0,0,Math.PI*2); x.fill();
+  });
+
+  // --- Craters (layered: large, medium, small, tiny) ---
+  function crater(cx,cy,r){
+    // Shadow (dark interior)
+    x.beginPath(); x.arc(cx,cy,r,0,Math.PI*2);
+    x.fillStyle=`rgba(${40+Math.random()*30},${40+Math.random()*30},${45+Math.random()*30},${0.25+Math.random()*0.35})`;
+    x.fill();
+    // Rim highlight (lit from upper-left)
+    x.beginPath(); x.arc(cx,cy,r,0,Math.PI*2);
+    x.strokeStyle=`rgba(${180+Math.random()*40},${180+Math.random()*40},${185+Math.random()*40},${0.15+Math.random()*0.2})`;
+    x.lineWidth=Math.max(1,r*0.15);
+    x.stroke();
+    // Bright rim on upper-left
+    x.beginPath(); x.arc(cx-r*0.1,cy-r*0.1,r*0.95,-Math.PI*0.8,-Math.PI*0.1);
+    x.strokeStyle=`rgba(200,200,205,${0.08+Math.random()*0.1})`;
+    x.lineWidth=Math.max(1,r*0.12);
+    x.stroke();
+    // Central peak for larger craters
+    if(r>15){
+      x.beginPath(); x.arc(cx,cy,r*0.15,0,Math.PI*2);
+      x.fillStyle=`rgba(160,160,165,${0.2+Math.random()*0.15})`;
+      x.fill();
+    }
+  }
+  // Large craters
+  for(let i=0;i<25;i++) crater(Math.random()*W, Math.random()*H, 15+Math.random()*35);
+  // Medium craters
+  for(let i=0;i<120;i++) crater(Math.random()*W, Math.random()*H, 5+Math.random()*15);
+  // Small craters
+  for(let i=0;i<500;i++) crater(Math.random()*W, Math.random()*H, 1+Math.random()*5);
+
+  // --- Surface noise (regolith texture) ---
+  for(let i=0;i<30000;i++){
+    const px=Math.random()*W, py=Math.random()*H;
+    x.fillStyle=`rgba(${Math.random()>0.5?160:80},${Math.random()>0.5?160:80},${Math.random()>0.5?165:85},${Math.random()*0.04})`;
+    x.fillRect(px,py,1,1);
+  }
+
+  // --- Rays from young craters (bright radial streaks) ---
+  [[700,400,60],[350,300,45],[900,450,40]].forEach(([rx,ry,len])=>{
+    for(let r=0;r<12;r++){
+      const ang=Math.random()*Math.PI*2;
+      const rl=len*0.5+Math.random()*len;
+      x.beginPath(); x.moveTo(rx,ry);
+      x.lineTo(rx+Math.cos(ang)*rl, ry+Math.sin(ang)*rl);
+      x.strokeStyle=`rgba(180,180,185,${0.04+Math.random()*0.04})`;
+      x.lineWidth=1+Math.random()*2;
+      x.stroke();
+    }
+  });
+
+  const tex=new THREE.CanvasTexture(cv);
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  const m=new THREE.Mesh(
+    new THREE.SphereGeometry(Rm,96,48),
+    new THREE.MeshPhongMaterial({map:tex,specular:new THREE.Color(0x111111),shininess:2})
+  );
+  m.position.set(D,0,0);
+  scene.add(m);
+  return m;
+}
+const moon = makeMoon();
+
+// Subtle Earth–Moon line
+scene.add(new THREE.Line(
+  new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0),new THREE.Vector3(D,0,0)]),
+  new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:0.03})
+));
+
+// ---- Trajectory Generation ----
+// Simplified interpretation of the public mission profile:
+//   Steps 1-3: ascent (nearly instant visually)
+//   Steps 4-5: multiple Earth orbits at increasing altitude
+//   Step 6: prox-ops demo orbit
+//   Step 7: TLI — depart Earth toward upper-right
+//   Steps 8-10: outbound coast (gentle arc curving up then toward Moon)
+//   Step 11: far-side lunar flyby (loop behind Moon)
+//   Step 12: return coast (lower arc back to Earth)
+//   Steps 13-15: re-entry spiral and splashdown
+
+function genTrajectory(){
+  const pts = [];
+  const N = 3200;
+
+  // Segment counts (sum = N)
+  const nLaunch  = 80;    // steps 1-3: vertical ascent from KSC → gravity turn → orbit insertion
+  const nOrbit   = 400;   // steps 4-6: expanding Earth orbits
+  const nTLI     = 80;    // step 7: TLI burn (spiral departure)
+  const nOut     = 750;   // steps 8-10: outbound coast to Moon
+  const nFlyby   = 400;   // step 11: far-side lunar flyby
+  const nRet     = 850;   // step 12: return coast
+  const nReentry = 640;   // steps 13-15: approach, skip re-entry, splashdown
+
+  // KSC launch position on Earth surface (28.6°N, 80.6°W)
+  const kscSurface = ll2v(28.6, -80.6, Re);
+  const kscUp = kscSurface.clone().normalize(); // radial "up" direction at KSC
+
+  // Orbital parameters
+  const ORBIT_INCL  = 0.15;
+  const ORBIT_SWEEP = Math.PI * 5.0; // ~2.5 revolutions
+  function earthOrbitPos(angle, alt){
+    return new THREE.Vector3(
+      Math.cos(angle) * alt,
+      Math.sin(angle) * Math.sin(ORBIT_INCL) * alt * 0.7,
+      Math.sin(angle) * alt
+    );
+  }
+
+  // Launch inserts into orbit at angle offset 1.0 rad
+  const ORBIT_START_ANGLE = 1.0;
+
+  // End of orbits (must include the launch offset!)
+  const orbitEndAngle = ORBIT_START_ANGLE + ORBIT_SWEEP;
+  const orbitEndAlt   = Re + 0.2 + 4.0;
+
+  // End of TLI (continues from orbit end angle)
+  const tliEndAngle = orbitEndAngle + Math.PI * 0.5;
+  const tliEndAlt   = Re + 4.2 + 30;
+  const tliEndXScale = 1.6;
+  const tliEndPos = new THREE.Vector3(
+    Math.cos(tliEndAngle) * tliEndAlt * tliEndXScale,
+    Math.sin(tliEndAngle) * Math.sin(ORBIT_INCL) * tliEndAlt * 0.7 + 10,
+    Math.sin(tliEndAngle) * tliEndAlt
+  );
+
+  // Lunar flyby geometry
+  const flybyR = Rm + PERILUNE;
+  const flybyStartAngle = Math.PI * 0.7;
+  const flybyEndAngle   = -Math.PI * 0.85;
+  const flybyTotalSweep = flybyStartAngle - flybyEndAngle;
+  const flybyStartPos = new THREE.Vector3(
+    D + Math.cos(flybyStartAngle) * flybyR,
+    Math.sin(flybyStartAngle) * flybyR * 0.5 + 6,
+    Math.sin(flybyStartAngle) * flybyR * 0.8
+  );
+  const flybyEndPos = new THREE.Vector3(
+    D + Math.cos(flybyEndAngle) * flybyR,
+    Math.sin(flybyEndAngle) * flybyR * 0.5 - 3,
+    Math.sin(flybyEndAngle) * flybyR * 0.8
+  );
+
+  // Splashdown target (Pacific off San Diego: ~32°N 117.5°W)
+  const splashTarget = ll2v(32, -117.5, Re);
+  // Re-entry interface point (high altitude approach)
+  const reentryStartPos = new THREE.Vector3(12, -7, -(Re + 5));
+
+  for(let i=0; i<=N; i++){
+    let p;
+
+    if(i <= nLaunch){
+      // ===== LAUNCH ASCENT (steps 1-3) =====
+      // All positions computed on a sphere (never goes through Earth)
+      // Ascend radially from KSC, then arc along the surface toward ORBIT_START_ANGLE
+      const t = i / nLaunch;
+      const smooth = t * t * (3 - 2*t); // ease in/out
+
+      // Altitude: rises from surface to LEO (Re + 0.2 = ~200 km)
+      // Fast initial climb, then levelling off
+      const altT = t < 0.2 ? (t/0.2) : 1;
+      const alt = Re + 0.005 + smooth * 0.195; // 5 km → 200 km above surface
+
+      // Angular position: KSC starts at a certain angle on the sphere.
+      // We need to smoothly rotate from KSC's direction to the orbit start direction.
+      // KSC direction (unit vector)
+      const kscDir = kscSurface.clone().normalize();
+      // First orbit position direction
+      const orbitStartDir = earthOrbitPos(ORBIT_START_ANGLE, 1).normalize();
+
+      // Spherical interpolation (slerp) between KSC direction and orbit start direction
+      // This keeps us ON the sphere surface, never cutting through
+      const dot = Math.max(-1, Math.min(1,
+        kscDir.x*orbitStartDir.x + kscDir.y*orbitStartDir.y + kscDir.z*orbitStartDir.z));
+      const omega = Math.acos(dot);
+      const sinOmega = Math.sin(omega);
+
+      let dir;
+      if(sinOmega > 0.001){
+        // Proper slerp
+        const a = Math.sin((1 - smooth) * omega) / sinOmega;
+        const b = Math.sin(smooth * omega) / sinOmega;
+        dir = new THREE.Vector3(
+          a * kscDir.x + b * orbitStartDir.x,
+          a * kscDir.y + b * orbitStartDir.y,
+          a * kscDir.z + b * orbitStartDir.z
+        );
+      } else {
+        // Nearly parallel, just lerp
+        dir = kscDir.clone().lerp(orbitStartDir, smooth);
+      }
+      dir.normalize();
+
+      // Position = direction * altitude (always above Earth surface)
+      p = dir.multiplyScalar(alt);
+    }
+    else if(i <= nLaunch + nOrbit){
+      // ===== EARTH ORBITS (steps 4-6) =====
+      const t = (i - nLaunch) / nOrbit;
+      const angle = ORBIT_START_ANGLE + t * ORBIT_SWEEP;
+      const alt = Re + 0.2 + t * 4.0;
+      p = earthOrbitPos(angle, alt);
+    }
+    else if(i <= nLaunch + nOrbit + nTLI){
+      // ===== TLI BURN (step 7) =====
+      const t = (i - nLaunch - nOrbit) / nTLI;
+      const ease = t * t * (3 - 2*t);
+      const orbitEnd = orbitEndAngle; // same as ORBIT_START_ANGLE + ORBIT_SWEEP
+      const angle = orbitEnd + t * Math.PI * 0.5;
+      const alt = orbitEndAlt + ease * 30;
+      const xScale = 1 + ease * 0.6;
+      p = new THREE.Vector3(
+        Math.cos(angle) * alt * xScale,
+        Math.sin(angle) * Math.sin(ORBIT_INCL) * alt * 0.7 + ease * 10,
+        Math.sin(angle) * alt
+      );
+    }
+    else if(i <= nLaunch + nOrbit + nTLI + nOut){
+      // ===== OUTBOUND COAST (steps 8-10) =====
+      const t = (i - nLaunch - nOrbit - nTLI) / nOut;
+      const u = t * t * (3 - 2*t);
+      const c1x = D*0.2, c1y = 50, c1z = 45;
+      const c2x = D*0.65, c2y = 35, c2z = 25;
+      p = new THREE.Vector3(
+        (1-u)**3*tliEndPos.x + 3*(1-u)**2*u*c1x + 3*(1-u)*u**2*c2x + u**3*flybyStartPos.x,
+        (1-u)**3*tliEndPos.y + 3*(1-u)**2*u*c1y + 3*(1-u)*u**2*c2y + u**3*flybyStartPos.y,
+        (1-u)**3*tliEndPos.z + 3*(1-u)**2*u*c1z + 3*(1-u)*u**2*c2z + u**3*flybyStartPos.z
+      );
+    }
+    else if(i <= nLaunch + nOrbit + nTLI + nOut + nFlyby){
+      // ===== LUNAR FLYBY (step 11) =====
+      const t = (i - nLaunch - nOrbit - nTLI - nOut) / nFlyby;
+      const angle = flybyStartAngle - t * flybyTotalSweep;
+      p = new THREE.Vector3(
+        D + Math.cos(angle) * flybyR,
+        Math.sin(angle) * flybyR * 0.5 + 6*(1-t) - 3*t,
+        Math.sin(angle) * flybyR * 0.8 + 5*Math.sin(t*Math.PI)
+      );
+    }
+    else if(i <= nLaunch + nOrbit + nTLI + nOut + nFlyby + nRet){
+      // ===== RETURN COAST (step 12) =====
+      const t = (i - nLaunch - nOrbit - nTLI - nOut - nFlyby) / nRet;
+      const u = t * t * (3 - 2*t);
+      const c1x = D*0.6, c1y = -30, c1z = -35;
+      const c2x = D*0.15, c2y = -38, c2z = -30;
+      p = new THREE.Vector3(
+        (1-u)**3*flybyEndPos.x + 3*(1-u)**2*u*c1x + 3*(1-u)*u**2*c2x + u**3*reentryStartPos.x,
+        (1-u)**3*flybyEndPos.y + 3*(1-u)**2*u*c1y + 3*(1-u)*u**2*c2y + u**3*reentryStartPos.y,
+        (1-u)**3*flybyEndPos.z + 3*(1-u)**2*u*c1z + 3*(1-u)*u**2*c2z + u**3*reentryStartPos.z
+      );
+    }
+    else {
+      // ===== RE-ENTRY & SPLASHDOWN (steps 13-15) =====
+      // Re-entry: single smooth Bézier from reentryStartPos → approach → splashdown
+      // Uses a 4-point cubic Bézier for one seamless curve
+      const t = (i - nLaunch - nOrbit - nTLI - nOut - nFlyby - nRet) / nReentry;
+      const u = t;
+
+      // P0 = reentryStartPos (far approach)
+      // P1 = entry interface control point (atmosphere edge, angled shallow)
+      const p1 = new THREE.Vector3(
+        splashTarget.x * 0.25,
+        splashTarget.y * 1.5 + 2,
+        splashTarget.z * 0.25 - Re * 0.4
+      );
+      // P2 = skip apex control (Orion's skip re-entry: briefly rises after first dip)
+      const p2 = new THREE.Vector3(
+        splashTarget.x * 0.7,
+        splashTarget.y + Re * 0.05 + 0.8,
+        splashTarget.z * 0.7
+      );
+      // P3 = splashdown (just above ocean surface)
+      const p3 = splashTarget.clone().multiplyScalar(1.002);
+
+      p = new THREE.Vector3(
+        (1-u)**3*reentryStartPos.x + 3*(1-u)**2*u*p1.x + 3*(1-u)*u**2*p2.x + u**3*p3.x,
+        (1-u)**3*reentryStartPos.y + 3*(1-u)**2*u*p1.y + 3*(1-u)*u**2*p2.y + u**3*p3.y,
+        (1-u)**3*reentryStartPos.z + 3*(1-u)**2*u*p1.z + 3*(1-u)*u**2*p2.z + u**3*p3.z
+      );
+    }
+
+    pts.push(p);
+  }
+  return pts;
+}
+
+const trajPts = genTrajectory();
+const trajCurve = new THREE.CatmullRomCurve3(trajPts);
+
+// Draw coloured trajectory
+const curvePts = trajCurve.getPoints(4000);
+const tGeo = new THREE.BufferGeometry().setFromPoints(curvePts);
+const tCols = new Float32Array(curvePts.length * 3);
+for(let i=0;i<curvePts.length;i++){
+  const t = i/curvePts.length;
+  let r,g,b;
+  if(t < 0.17){
+    // Earth orbits — cyan/blue
+    r=0.2; g=0.7; b=1.0;
+  } else if(t < 0.42){
+    // Outbound — gradient blue→orange
+    const lt=(t-0.17)/0.25;
+    r=0.2+lt*0.8; g=0.7-lt*0.15; b=1.0-lt*0.6;
+  } else if(t < 0.55){
+    // Lunar flyby — bright orange
+    r=1.0; g=0.65; b=0.25;
+  } else {
+    // Return — gradient orange→green
+    const lt=(t-0.55)/0.45;
+    r=1.0-lt*0.55; g=0.65+lt*0.35; b=0.25+lt*0.35;
+  }
+  tCols[i*3]=r; tCols[i*3+1]=g; tCols[i*3+2]=b;
+}
+tGeo.setAttribute('color',new THREE.BufferAttribute(tCols,3));
+scene.add(new THREE.Line(tGeo, new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:0.55})));
+// glow copy
+scene.add(new THREE.Line(tGeo.clone(), new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:0.12})));
+
+// ---- Waypoint markers along trajectory ----
+// Place numbered dots at approximate trajectory positions for each of the 15 events
+// Fractions aligned to new segment layout: launch(80) + orbit(400) + TLI(80) + out(750) + flyby(400) + ret(850) + reentry(640) = 3200
+const eventTrajFractions = [
+  0.000, // 1 launch (start of launch phase)
+  0.005, // 2 SRB jettison (~2 min into launch)
+  0.015, // 3 MECO (end of launch ascent)
+  0.035, // 4 perigee raise (early orbit)
+  0.070, // 5 apogee raise (mid orbits)
+  0.130, // 6 prox ops (late orbits)
+  0.155, // 7 TLI (start of TLI phase)
+  0.190, // 8 HEO checkout (early outbound)
+  0.205, // 9 ICPS disposal
+  0.230, // 10 outbound transit
+  0.465, // 11 lunar flyby (middle of flyby arc)
+  0.540, // 12 trans-earth return
+  0.870, // 13 CM/SM sep (early re-entry)
+  0.930, // 14 entry interface (atmospheric entry)
+  0.998, // 15 splashdown (end)
+];
+
+const wpGroup = new THREE.Group();
+eventTrajFractions.forEach((frac, idx) => {
+  const pt = trajCurve.getPointAt(Math.min(frac, 0.999));
+  // Small sphere
+  const dot = new THREE.Mesh(
+    new THREE.SphereGeometry(0.4, 12, 12),
+    new THREE.MeshBasicMaterial({ color: idx < 6 ? 0x4499ff : idx < 10 ? 0x55aaff : idx === 10 ? 0xffa040 : 0x66dd88, transparent: true, opacity: 0.7 })
+  );
+  dot.position.copy(pt);
+  wpGroup.add(dot);
+
+  // Number sprite
+  const cv = document.createElement('canvas'); cv.width = 64; cv.height = 64;
+  const cx = cv.getContext('2d');
+  cx.fillStyle = idx === 10 ? '#ffa040' : idx < 7 ? '#4499ff' : idx >= 12 ? '#66dd88' : '#88bbff';
+  cx.font = 'bold 40px Arial';
+  cx.textAlign = 'center'; cx.textBaseline = 'middle';
+  cx.fillText(String(idx + 1), 32, 32);
+  const spriteTex = new THREE.CanvasTexture(cv);
+  const spriteMat = new THREE.SpriteMaterial({ map: spriteTex, transparent: true, opacity: 0.85 });
+  const sprite = new THREE.Sprite(spriteMat);
+  sprite.position.copy(pt).add(new THREE.Vector3(0, 1.5, 0));
+  sprite.scale.set(3, 3, 1);
+  wpGroup.add(sprite);
+});
+scene.add(wpGroup);
+
+// ---- Orion spacecraft ----
+function makeOrion(){
+  const g = new THREE.Group();
+  const white  = new THREE.MeshPhongMaterial({color:0xe8e8e8,specular:0x888888,shininess:40});
+  const silver = new THREE.MeshPhongMaterial({color:0xaaaaaa,specular:0x666666,shininess:25});
+  const gold   = new THREE.MeshPhongMaterial({color:0xc8a832,specular:0xffe080,shininess:50}); // MLI gold foil
+  const dark   = new THREE.MeshPhongMaterial({color:0x333333,specular:0x222222,shininess:10});
+  const panel  = new THREE.MeshPhongMaterial({color:0x152848,specular:0x3060aa,shininess:45,side:THREE.DoubleSide});
+
+  // === Crew Module (Orion capsule) ===
+  // Truncated cone: wide heat shield base (r=0.65) tapering to top (r=0.2)
+  const cmGeo = new THREE.CylinderGeometry(0.2, 0.65, 0.8, 16);
+  const cm = new THREE.Mesh(cmGeo, white);
+  cm.position.y = 0;
+  g.add(cm);
+
+  // Heat shield (dark disc at base)
+  const heatShield = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.65, 0.66, 0.06, 16),
+    dark
+  );
+  heatShield.position.y = -0.43;
+  g.add(heatShield);
+
+  // Top docking port
+  const dock = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 0.12, 12), silver);
+  dock.position.y = 0.46;
+  g.add(dock);
+
+  // === Service Module Group (jettisoned at CM/SM separation) ===
+  const smGroup = new THREE.Group();
+
+  // Spacecraft Adapter (connects CM to SM)
+  const adapter = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.65, 0.55, 0.2, 16),
+    silver
+  );
+  adapter.position.y = -0.6;
+  smGroup.add(adapter);
+
+  // European Service Module (ESM) — Main cylindrical body
+  const esmBody = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.55, 0.55, 1.2, 16),
+    gold
+  );
+  esmBody.position.y = -1.3;
+  smGroup.add(esmBody);
+
+  // ESM engine nozzle at bottom
+  const nozzle = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.12, 0.22, 0.3, 12),
+    dark
+  );
+  nozzle.position.y = -2.05;
+  smGroup.add(nozzle);
+
+  // ESM aft bulkhead
+  const aftBulk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.55, 0.5, 0.15, 16),
+    silver
+  );
+  aftBulk.position.y = -1.98;
+  smGroup.add(aftBulk);
+
+  // Four Solar Array Wings (X-pattern from ESM)
+  const wingLen = 3.2, wingW = 0.7;
+  const wingGeo = new THREE.BoxGeometry(wingLen, 0.03, wingW);
+  const strutGeo = new THREE.BoxGeometry(0.06, 0.06, wingW);
+
+  for(let i = 0; i < 4; i++){
+    const angle = (i * Math.PI / 2) + Math.PI/4;
+    const wingGroup = new THREE.Group();
+    const w = new THREE.Mesh(wingGeo, panel);
+    w.position.x = wingLen * 0.5 + 0.6;
+    wingGroup.add(w);
+    for(let s = 0; s < 2; s++){
+      const line = new THREE.Mesh(
+        new THREE.BoxGeometry(0.02, 0.04, wingW),
+        silver
+      );
+      line.position.x = 0.6 + wingLen * (s+1)/3;
+      wingGroup.add(line);
+    }
+    const strut = new THREE.Mesh(
+      new THREE.BoxGeometry(0.6, 0.05, 0.08),
+      silver
+    );
+    strut.position.x = 0.3;
+    wingGroup.add(strut);
+    wingGroup.position.y = -1.3;
+    wingGroup.rotation.y = angle;
+    smGroup.add(wingGroup);
+  }
+
+  g.add(smGroup);
+
+  // === Engine exhaust plume (visible during burns) ===
+  const plumeMat = new THREE.MeshBasicMaterial({color:0xff8822,transparent:true,opacity:0.6});
+  const plumeGeo = new THREE.ConeGeometry(0.3, 1.5, 8);
+  const plume = new THREE.Mesh(plumeGeo, plumeMat);
+  plume.position.y = -2.8;
+  plume.visible = false;
+  g.add(plume);
+  // Outer plume glow
+  const plumeGlow = new THREE.Mesh(
+    new THREE.ConeGeometry(0.5, 2.2, 8),
+    new THREE.MeshBasicMaterial({color:0xffaa44,transparent:true,opacity:0.2})
+  );
+  plumeGlow.position.y = -3.2;
+  plumeGlow.visible = false;
+  g.add(plumeGlow);
+  g.userData = { plume, plumeGlow, smGroup };
+
+  // === Tracking glow (visibility aid) ===
+  const glow = new THREE.Mesh(
+    new THREE.SphereGeometry(1.0, 16, 16),
+    new THREE.MeshBasicMaterial({color:0x7ab8ff,transparent:true,opacity:0.1})
+  );
+  glow.position.y = -0.8;
+  g.add(glow);
+
+  // Point light for visibility at distance
+  const light = new THREE.PointLight(0x7ab8ff, 0.6, 25);
+  light.position.y = -0.5;
+  g.add(light);
+
+  g.scale.set(0.65, 0.65, 0.65);
+  scene.add(g);
+  return g;
+}
+const orion = makeOrion();
+
+// ---- SLS Rocket (visible during launch, with separating stages) ----
+function makeSLS(){
+  const rocket = new THREE.Group();
+  const white  = new THREE.MeshPhongMaterial({color:0xeaeaea,specular:0x888888,shininess:30});
+  const orange = new THREE.MeshPhongMaterial({color:0xd4600a,specular:0x442200,shininess:10}); // core stage orange tank
+  const grey   = new THREE.MeshPhongMaterial({color:0x777777,specular:0x444444,shininess:15});
+  const dark   = new THREE.MeshPhongMaterial({color:0x333333,specular:0x222222,shininess:8});
+  const flame  = new THREE.MeshBasicMaterial({color:0xff6600,transparent:true,opacity:0.7});
+  const flameG = new THREE.MeshBasicMaterial({color:0xffaa22,transparent:true,opacity:0.25});
+
+  // Scale: SLS is ~98 m tall. At our scale (1 unit = 1000 km) it'd be invisible.
+  // So we use artistic scale: ~4 units tall (visible from orbit view)
+  const S = 1; // base scale multiplier
+
+  // === Orion + fairing (top) ===
+  const fairingGroup = new THREE.Group();
+  // Launch Abort System tower
+  const las = new THREE.Mesh(new THREE.CylinderGeometry(0.04*S, 0.06*S, 0.6*S, 8), grey);
+  las.position.y = 3.3*S;
+  fairingGroup.add(las);
+  // Orion fairing (covers capsule during ascent)
+  const fairing = new THREE.Mesh(new THREE.ConeGeometry(0.35*S, 0.8*S, 12), white);
+  fairing.position.y = 2.6*S;
+  fairingGroup.add(fairing);
+  // Orion capsule (peek-through)
+  const capsuleShell = new THREE.Mesh(new THREE.CylinderGeometry(0.15*S, 0.35*S, 0.5*S, 12), white);
+  capsuleShell.position.y = 2.05*S;
+  fairingGroup.add(capsuleShell);
+  rocket.add(fairingGroup);
+  rocket.userData.fairingGroup = fairingGroup;
+
+  // === ICPS / Upper stage ===
+  const icps = new THREE.Group();
+  const icpsBody = new THREE.Mesh(new THREE.CylinderGeometry(0.3*S, 0.3*S, 0.8*S, 12), white);
+  icpsBody.position.y = 1.4*S;
+  icps.add(icpsBody);
+  rocket.add(icps);
+  rocket.userData.icps = icps;
+
+  // === Core Stage (orange tank — iconic SLS look) ===
+  const coreGroup = new THREE.Group();
+  const core = new THREE.Mesh(new THREE.CylinderGeometry(0.35*S, 0.35*S, 2.8*S, 12), orange);
+  core.position.y = -0.4*S;
+  coreGroup.add(core);
+  // RS-25 engine cluster at base
+  for(let i = 0; i < 4; i++){
+    const nozzle = new THREE.Mesh(new THREE.ConeGeometry(0.08*S, 0.2*S, 8), dark);
+    const ang = (i/4) * Math.PI * 2;
+    nozzle.position.set(Math.cos(ang)*0.15*S, -1.9*S, Math.sin(ang)*0.15*S);
+    coreGroup.add(nozzle);
+  }
+  // Core stage engine flames
+  const coreFlame = new THREE.Mesh(new THREE.ConeGeometry(0.3*S, 1.2*S, 8), flame);
+  coreFlame.position.y = -2.5*S;
+  coreGroup.add(coreFlame);
+  const coreFlameG = new THREE.Mesh(new THREE.ConeGeometry(0.5*S, 1.8*S, 8), flameG);
+  coreFlameG.position.y = -2.7*S;
+  coreGroup.add(coreFlameG);
+  rocket.userData.coreFlame = coreFlame;
+  rocket.userData.coreFlameG = coreFlameG;
+  rocket.add(coreGroup);
+  rocket.userData.coreGroup = coreGroup;
+
+  // === Solid Rocket Boosters (x2) ===
+  const srbLeft = new THREE.Group();
+  const srbRight = new THREE.Group();
+  [srbLeft, srbRight].forEach((srb, idx) => {
+    const side = idx === 0 ? -1 : 1;
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.2*S, 0.2*S, 2.6*S, 10), white);
+    body.position.y = -0.3*S;
+    srb.add(body);
+    // SRB nose cone
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.2*S, 0.4*S, 10), white);
+    nose.position.y = 1.2*S;
+    srb.add(nose);
+    // SRB nozzle
+    const noz = new THREE.Mesh(new THREE.ConeGeometry(0.1*S, 0.15*S, 8), dark);
+    noz.position.y = -1.7*S;
+    srb.add(noz);
+    // SRB flame
+    const srbFlame = new THREE.Mesh(new THREE.ConeGeometry(0.18*S, 1.5*S, 8), flame);
+    srbFlame.position.y = -2.3*S;
+    srb.add(srbFlame);
+    const srbFlameG = new THREE.Mesh(new THREE.ConeGeometry(0.3*S, 2.0*S, 8), flameG);
+    srbFlameG.position.y = -2.5*S;
+    srb.add(srbFlameG);
+    srb.userData = { flame: srbFlame, flameG: srbFlameG };
+    srb.position.x = side * 0.55*S;
+    rocket.add(srb);
+  });
+  rocket.userData.srbLeft = srbLeft;
+  rocket.userData.srbRight = srbRight;
+
+  // Separated pieces (initially hidden, shown after separation)
+  // SRB debris (tumbling away)
+  const srbDebrisL = srbLeft.clone(); srbDebrisL.visible = false; scene.add(srbDebrisL);
+  const srbDebrisR = srbRight.clone(); srbDebrisR.visible = false; scene.add(srbDebrisR);
+  rocket.userData.srbDebrisL = srbDebrisL;
+  rocket.userData.srbDebrisR = srbDebrisR;
+
+  // Core stage debris (tumbling away after MECO)
+  const coreDebris = coreGroup.clone(); coreDebris.visible = false; scene.add(coreDebris);
+  rocket.userData.coreDebris = coreDebris;
+
+  rocket.scale.set(0.5, 0.5, 0.5);
+  scene.add(rocket);
+  return rocket;
+}
+const sls = makeSLS();
+
+// Launch sequence state — uses real elapsed seconds after launch
+const launchSeq = {
+  srbSepSec: 126,        // T+2:06 — SRB burnout & separation
+  mecoSec: 508,          // T+8:28 — Main Engine Cutoff & core stage sep
+  fairingSec: 660,       // T+11:00 — Fairing/LAS jettison
+  orionFreeSec: 7200,    // T+2:00:00 — After TLI, Orion flies free
+  srbSepPosL: null, srbSepPosR: null, srbSepRot: 0,
+  coreSepPos: null, coreSepRot: 0,
+};
+
+// Time-to-curve mapping: remaps linear time progress to trajectory curve position
+// This stretches the launch/orbit phases so the rocket moves visibly on screen
+// Trajectory curve allocation: Launch=0-0.025, Orbit=0.025-0.15, TLI=0.15-0.175, rest=0.175-1.0
+// Time allocation (approx): Launch=0-600s, Orbit=600-7200s, TLI=7200-9000s, rest=9000s-end
+function timeToCurve(tp){
+  if(tp <= 0) return 0;
+  if(tp >= 1) return 1;
+  const missionSec = MISSION_DUR / 1000;
+  const sec = tp * missionSec;
+  // Piecewise linear mapping from elapsed seconds to curve parameter
+  // Launch: 0-600s → curve 0-0.025
+  if(sec <= 600) return (sec / 600) * 0.025;
+  // Orbit: 600-7200s → curve 0.025-0.15
+  if(sec <= 7200) return 0.025 + ((sec - 600) / 6600) * 0.125;
+  // TLI: 7200-9000s → curve 0.15-0.175
+  if(sec <= 9000) return 0.15 + ((sec - 7200) / 1800) * 0.025;
+  // Outbound through end: 9000s-end → curve 0.175-1.0
+  return 0.175 + ((sec - 9000) / (missionSec - 9000)) * 0.825;
+}
+
+// Trail
+const TRAIL_N = 250;
+const trailBuf = new Float32Array(TRAIL_N*3);
+const trailGeo = new THREE.BufferGeometry();
+trailGeo.setAttribute('position',new THREE.BufferAttribute(trailBuf,3));
+trailGeo.setDrawRange(0,0);
+const trail = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({color:0x7ab8ff,transparent:true,opacity:0.35}));
+scene.add(trail);
+let trailIdx = 0;
+
+// ---- Camera ----
+let camTheta = 0.3, camPhi = 1.1, camDist = 500;
+let cameraSnap = false; // when true, skip lerp and snap to target instantly
+let camTarget = new THREE.Vector3(D*0.4,0,0);
+let tgtTarget = camTarget.clone(), tgtDist = 500, tgtTheta = 0.3, tgtPhi = 1.1;
+let dragging = false, lastM = {x:0,y:0};
+const DRAG_SENS = 0.002; // lower = less sensitive (was 0.005)
+const KEY_SPEED = 0.015;  // arrow key rotation speed per frame
+const keysDown = {};
+
+renderer.domElement.addEventListener('mousedown',e=>{ dragging=true; lastM={x:e.clientX,y:e.clientY}; });
+renderer.domElement.addEventListener('mousemove',e=>{
+  if(!dragging) return;
+  tgtTheta -= (e.clientX-lastM.x)*DRAG_SENS;
+  tgtPhi = Math.max(0.1,Math.min(Math.PI-0.1, tgtPhi-(e.clientY-lastM.y)*DRAG_SENS));
+  lastM={x:e.clientX,y:e.clientY};
+});
+renderer.domElement.addEventListener('mouseup',()=>dragging=false);
+renderer.domElement.addEventListener('mouseleave',()=>dragging=false);
+renderer.domElement.addEventListener('wheel',e=>{
+  tgtDist *= e.deltaY>0?1.08:0.92;
+  tgtDist = Math.max(12,Math.min(2000,tgtDist));
+});
+// Touch
+renderer.domElement.addEventListener('touchstart',e=>{ if(e.touches.length===1){ dragging=true; lastM={x:e.touches[0].clientX,y:e.touches[0].clientY}; }});
+renderer.domElement.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  if(dragging && e.touches.length===1){
+    tgtTheta -= (e.touches[0].clientX-lastM.x)*DRAG_SENS;
+    tgtPhi = Math.max(0.1,Math.min(Math.PI-0.1, tgtPhi-(e.touches[0].clientY-lastM.y)*DRAG_SENS));
+    lastM={x:e.touches[0].clientX,y:e.touches[0].clientY};
+  }
+},{passive:false});
+renderer.domElement.addEventListener('touchend',()=>dragging=false);
+
+// Arrow keys + WASD + zoom with +/-
+window.addEventListener('keydown',e=>{ keysDown[e.key]=true; });
+window.addEventListener('keyup',e=>{ keysDown[e.key]=false; });
+function processKeys(){
+  if(keysDown['ArrowLeft']||keysDown['a'])  tgtTheta += KEY_SPEED;
+  if(keysDown['ArrowRight']||keysDown['d']) tgtTheta -= KEY_SPEED;
+  if(keysDown['ArrowUp']||keysDown['w'])    tgtPhi = Math.max(0.1,tgtPhi-KEY_SPEED);
+  if(keysDown['ArrowDown']||keysDown['s'])  tgtPhi = Math.min(Math.PI-0.1,tgtPhi+KEY_SPEED);
+  if(keysDown['=']||keysDown['+'])          tgtDist = Math.max(12,tgtDist*0.97);
+  if(keysDown['-']||keysDown['_'])          tgtDist = Math.min(2000,tgtDist*1.03);
+}
+
+// ---- Views ----
+let currentView = 'overview';
+function setView(v){
+  currentView = v;
+  document.querySelectorAll('.view-btn').forEach(b=>b.classList.toggle('active',b.textContent.toLowerCase().replace(/\s/g,'')===v||
+    (v==='earth'&&b.textContent==='Earth Orbits')||(v==='lunar'&&b.textContent==='Lunar Flyby')||(v==='follow'&&b.textContent==='Follow Orion')));
+  switch(v){
+    case 'overview': tgtDist=500; tgtTarget=new THREE.Vector3(D*0.4,0,0); tgtTheta=0.3; tgtPhi=1.1; break;
+    case 'earth': tgtDist=35; tgtTarget=new THREE.Vector3(0,0,0); tgtTheta=0.5; tgtPhi=1.15; break;
+    case 'lunar': tgtDist=35; tgtTarget=new THREE.Vector3(D,0,0); tgtTheta=0.3; tgtPhi=1.25; break;
+    case 'follow': tgtDist=14; cameraSnap=true; break;
+  }
+}
+
+// ---- Speed ----
+const speeds = [0.25,0.5,1,2,5,10,50,100,500,1000,5000];
+let spIdx = 6, timeMult = speeds[spIdx];
+function changeSpeed(d){
+  spIdx = Math.max(0,Math.min(speeds.length-1,spIdx+d));
+  timeMult = speeds[spIdx];
+  document.getElementById('speed-value').textContent = timeMult+'x';
+}
+
+// ---- Timeline UI ----
+function buildTimeline(){
+  const now = simTime;
+  document.getElementById('timeline-container').innerHTML = EVENTS.map((ev,idx)=>{
+    const et = new Date(ev.t).getTime();
+    const past = now > et;
+    const isNext = !past && (idx===0 || now > new Date(EVENTS[idx-1].t).getTime());
+    const cls = past?'done':(isNext?'now':'wait');
+    const d = new Date(ev.t);
+    const ds = d.toLocaleDateString('en-IE',{month:'short',day:'numeric'});
+    const ts = d.toLocaleTimeString('en-IE',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'UTC'});
+    return `<div class="tl-item" onclick="jumpToEvent(${idx})" title="Jump to ${ev.name}"><div class="tl-dot ${cls}">${ev.n}</div><div><div class="tl-time">${ds} ${ts} UTC</div><div class="tl-name">${ev.n}. ${ev.name}</div><div class="tl-desc">${ev.desc}</div></div></div>`;
+  }).join('');
+}
+
+// ---- Jump to event ----
+function jumpToEvent(idx){
+  const ev = EVENTS[idx];
+  const evTime = new Date(ev.t).getTime();
+  // For splashdown (last event), jump to just before so progress stays <= 1
+  simTime = idx === EVENTS.length - 1 ? evTime - 2000 : evTime + 500;
+  lastFrame = performance.now(); // reset frame timer to avoid huge dt jump
+
+  // Reset trail
+  trailIdx = 0;
+  trailGeo.setDrawRange(0,0);
+
+  // Reset launch sequence debris state so it re-captures positions
+  launchSeq.srbSepPosL = null;
+  launchSeq.srbSepPosR = null;
+  launchSeq.srbSepRot = 0;
+  launchSeq.coreSepPos = null;
+  launchSeq.coreSepRot = 0;
+
+  // Re-enable all SLS parts (the animate loop will hide what's needed)
+  sls.userData.srbLeft.visible = true;
+  sls.userData.srbRight.visible = true;
+  sls.userData.coreGroup.visible = true;
+  sls.userData.fairingGroup.visible = true;
+  sls.userData.srbDebrisL.visible = false;
+  sls.userData.srbDebrisR.visible = false;
+  sls.userData.coreDebris.visible = false;
+
+  // Switch to best camera view for this phase
+  const ph = ev.ph;
+  if(ph === 'launch') setView('follow');
+  else if(ph === 'earth_orbit' || ph === 'tli') setView('earth');
+  else if(ph === 'lunar_flyby') setView('lunar');
+  else if(ph === 'reentry' || ph === 'splashdown') setView('follow');
+  else setView('follow'); // outbound, return — follow the capsule
+
+  // Rebuild timeline to update dot states
+  buildTimeline();
+}
+
+// ---- Simulation ----
+// Start at launch time so users see the replay immediately.
+let simTime = LAUNCH + 1000; // start 1 second after launch
+let lastFrame = performance.now();
+
+function restartReplay(){
+  simTime = LAUNCH + 1000;
+  timeMult = speeds[6];
+  spIdx = 6;
+  document.getElementById('speed-value').textContent = '50x';
+  trailIdx = 0;
+  trailGeo.setDrawRange(0,0);
+  launchSeq.srbSepPosL = null;
+  launchSeq.srbSepPosR = null;
+  launchSeq.coreSepPos = null;
+  sls.userData.srbLeft.visible = true;
+  sls.userData.srbRight.visible = true;
+  sls.userData.coreGroup.visible = true;
+  sls.userData.fairingGroup.visible = true;
+  sls.userData.coreFlame.visible = true;
+  sls.userData.coreFlameG.visible = true;
+  setView('overview');
+  buildTimeline();
+}
+
+function getProgress(t){
+  if(t<LAUNCH) return -1;
+  if(t>SPLASHDOWN) return 1.001;
+  return (t-LAUNCH)/MISSION_DUR;
+}
+
+function getPhase(t){
+  if(t<LAUNCH) return {name:'PRE-LAUNCH',detail:'T- countdown active'};
+  for(let i=EVENTS.length-1;i>=0;i--){
+    if(t>=new Date(EVENTS[i].t).getTime()) return {name:EVENTS[i].name.toUpperCase(),detail:EVENTS[i].desc};
+  }
+  return {name:'PRE-LAUNCH',detail:'Awaiting launch window'};
+}
+
+function fmtDur(ms){
+  const s=Math.floor(ms/1000), d=Math.floor(s/86400), h=Math.floor(s%86400/3600), m=Math.floor(s%3600/60), sec=s%60;
+  return `${String(d).padStart(2,'0')}:${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+}
+
+function animate(){
+  requestAnimationFrame(animate);
+  const now = performance.now();
+  const dt = (now - lastFrame)/1000;
+  lastFrame = now;
+  simTime += dt * 1000 * timeMult;
+
+  const progress = getProgress(simTime);
+  const phase = getPhase(simTime);
+  const sd = new Date(simTime);
+
+  // Clocks
+  document.getElementById('utc-clock').textContent = sd.toLocaleTimeString('en-IE',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false,timeZone:'UTC'})+' UTC';
+  const met = simTime - LAUNCH;
+  document.getElementById('met-clock').textContent = met < 0 ? 'T- '+fmtDur(-met) : 'MET '+fmtDur(met);
+
+  // Phase
+  document.getElementById('phase-name').textContent = phase.name;
+  document.getElementById('phase-detail').textContent = phase.detail;
+
+  // Countdown banner (compact, non-blocking)
+  const cdEl = document.getElementById('countdown-banner');
+  if(simTime < LAUNCH){ cdEl.classList.remove('hidden'); document.getElementById('countdown-time').textContent='T-'+fmtDur(LAUNCH-simTime); }
+  else cdEl.classList.add('hidden');
+
+  // Rotate bodies
+  earth.rotation.y += dt * 0.02 * Math.min(timeMult,10);
+  moon.rotation.y += dt * 0.002;
+
+  // KSC pulse
+  const pf = 0.5+0.5*Math.sin(now*0.003);
+  kscRing.scale.set(1+pf*0.3,1+pf*0.3,1);
+  kscRingM.opacity = 0.3+pf*0.3;
+
+  // Waypoint markers visibility based on view distance
+  wpGroup.visible = camDist > 40;
+
+  // Orion position — use timeToCurve for trajectory position
+  if(progress >= 0 && progress <= 1){
+    const curveT = Math.max(0, Math.min(0.999, timeToCurve(progress)));
+    const pt = trajCurve.getPointAt(curveT);
+
+    // --- Compute orientation (used by both SLS and Orion) ---
+    // Use forward and backward samples to handle end-of-curve gracefully
+    const nextPt = trajCurve.getPointAt(Math.min(0.999, curveT + 0.002));
+    const prevPt = trajCurve.getPointAt(Math.max(0.001, curveT - 0.002));
+    let dir = new THREE.Vector3().subVectors(nextPt, pt);
+    if(dir.length() < 0.0001) dir.subVectors(pt, prevPt); // fallback at end of curve
+    dir.normalize();
+    // Use radial-from-Earth as up reference (stable everywhere, never parallel to dir near Earth)
+    const radialRef = pt.clone().normalize();
+    let right = new THREE.Vector3().crossVectors(dir, radialRef).normalize();
+    // Fallback if dir is parallel to radialRef (deep space)
+    if(right.length() < 0.01){
+      const altUp = new THREE.Vector3(0, 1, 0);
+      right.crossVectors(dir, altUp).normalize();
+      if(right.length() < 0.01) right.set(1,0,0);
+    }
+    const correctedUp = new THREE.Vector3().crossVectors(right, dir).normalize();
+    const mtx = new THREE.Matrix4();
+
+    // --- Launch phase: SLS rocket visible, Orion hidden ---
+    // Use elapsed seconds for stage separation events
+    const elapsedSec = (simTime - LAUNCH) / 1000;
+    const isLaunchPhase = elapsedSec < launchSeq.orionFreeSec;
+    const srbSep = elapsedSec >= launchSeq.srbSepSec;
+    const coreSep = elapsedSec >= launchSeq.mecoSec;
+    const fairingSep = elapsedSec >= launchSeq.fairingSec;
+
+    if(isLaunchPhase){
+      // SLS is the primary vehicle
+      sls.visible = true;
+      orion.visible = false;
+      sls.position.copy(pt);
+
+      // Orient rocket with gravity turn: start pointing radially outward (nose up),
+      // then gradually pitch over to follow trajectory tangent
+      const radialUp = pt.clone().normalize(); // points away from Earth center
+      // Gravity turn: vertical at T+0, fully pitched over by T+10 min (600s)
+      // Real SLS starts pitching at T+8s (roll program), full pitch-over by MECO (~T+8 min)
+      const pitchT = Math.min(1.0, elapsedSec / 600);
+      // Use smooth easing for realistic gravity turn (slow start, accelerates)
+      const pitchEase = pitchT * pitchT * (3.0 - 2.0 * pitchT); // smoothstep
+      const launchDir = radialUp.clone().lerp(dir, pitchEase).normalize();
+      const launchRight = new THREE.Vector3().crossVectors(launchDir, correctedUp).normalize();
+      if(launchRight.length() < 0.01) launchRight.copy(right);
+      const launchUp = new THREE.Vector3().crossVectors(launchRight, launchDir).normalize();
+      mtx.makeBasis(launchRight, launchDir, launchUp);
+      sls.quaternion.setFromRotationMatrix(mtx);
+
+      // Ensure flames are visible at launch
+      sls.userData.coreFlame.visible = !coreSep;
+      sls.userData.coreFlameG.visible = !coreSep;
+
+      // Flame flicker
+      const flicker = 0.5 + Math.random() * 0.5;
+      sls.userData.coreFlame.scale.y = 0.7 + Math.random() * 0.5;
+      sls.userData.coreFlame.material.opacity = 0.6 * flicker;
+      sls.userData.coreFlameG.material.opacity = 0.2 * flicker;
+
+      // --- SRB separation ---
+      if(srbSep){
+        // Hide SRBs on the rocket
+        sls.userData.srbLeft.visible = false;
+        sls.userData.srbRight.visible = false;
+        // Show debris pieces drifting away
+        sls.userData.srbDebrisL.visible = true;
+        sls.userData.srbDebrisR.visible = true;
+
+        if(!launchSeq.srbSepPosL){
+          // Capture separation position
+          launchSeq.srbSepPosL = sls.userData.srbLeft.getWorldPosition(new THREE.Vector3());
+          launchSeq.srbSepPosR = sls.userData.srbRight.getWorldPosition(new THREE.Vector3());
+        }
+        // Animate debris: drift outward and tumble (time-based)
+        const sepAge = (elapsedSec - launchSeq.srbSepSec) / 3; // normalize: ~1 unit per 3 seconds
+        const driftSpeed = 0.15;
+        const tumbleSpeed = 3;
+
+        // Left SRB drifts left and down
+        sls.userData.srbDebrisL.position.copy(launchSeq.srbSepPosL);
+        sls.userData.srbDebrisL.position.x -= sepAge * driftSpeed;
+        sls.userData.srbDebrisL.position.y -= sepAge * driftSpeed * 0.5;
+        sls.userData.srbDebrisL.rotation.z = sepAge * tumbleSpeed;
+        sls.userData.srbDebrisL.rotation.x = sepAge * tumbleSpeed * 0.7;
+        sls.userData.srbDebrisL.scale.setScalar(Math.max(0.01, 0.5 - sepAge * 0.04));
+        // Kill SRB flames
+        if(sls.userData.srbDebrisL.userData && sls.userData.srbDebrisL.userData.flame){
+          sls.userData.srbDebrisL.userData.flame.visible = false;
+          sls.userData.srbDebrisL.userData.flameG.visible = false;
+        }
+
+        // Right SRB drifts right and down
+        sls.userData.srbDebrisR.position.copy(launchSeq.srbSepPosR);
+        sls.userData.srbDebrisR.position.x += sepAge * driftSpeed;
+        sls.userData.srbDebrisR.position.y -= sepAge * driftSpeed * 0.5;
+        sls.userData.srbDebrisR.rotation.z = -sepAge * tumbleSpeed;
+        sls.userData.srbDebrisR.rotation.x = sepAge * tumbleSpeed * 0.5;
+        sls.userData.srbDebrisR.scale.setScalar(Math.max(0.01, 0.5 - sepAge * 0.04));
+
+        // Fade out debris after a while
+        if(sepAge > 8){
+          sls.userData.srbDebrisL.visible = false;
+          sls.userData.srbDebrisR.visible = false;
+        }
+      } else {
+        sls.userData.srbLeft.visible = true;
+        sls.userData.srbRight.visible = true;
+        // SRB flames flicker
+        const sf = 0.5 + Math.random() * 0.5;
+        [sls.userData.srbLeft, sls.userData.srbRight].forEach(srb => {
+          if(srb.userData.flame){
+            srb.userData.flame.scale.y = 0.7 + Math.random() * 0.5;
+            srb.userData.flame.material.opacity = 0.6 * sf;
+            srb.userData.flameG.material.opacity = 0.2 * sf;
+          }
+        });
+      }
+
+      // --- Core stage separation (MECO) ---
+      if(coreSep){
+        sls.userData.coreGroup.visible = false;
+        sls.userData.coreDebris.visible = true;
+        if(!launchSeq.coreSepPos){
+          launchSeq.coreSepPos = pt.clone();
+        }
+        const cAge = (elapsedSec - launchSeq.mecoSec) / 3; // normalize: ~1 unit per 3 seconds
+        sls.userData.coreDebris.position.copy(launchSeq.coreSepPos);
+        sls.userData.coreDebris.position.y -= cAge * 0.08;
+        sls.userData.coreDebris.rotation.x = cAge * 1.5;
+        sls.userData.coreDebris.scale.setScalar(Math.max(0.01, 0.5 - cAge * 0.03));
+        // Kill core flames on debris
+        sls.userData.coreDebris.visible = cAge < 10;
+      } else {
+        sls.userData.coreGroup.visible = true;
+        sls.userData.coreDebris.visible = false;
+      }
+
+      // --- Fairing / LAS jettison ---
+      if(fairingSep){
+        sls.userData.fairingGroup.visible = false;
+        // Show Orion capsule riding on top of ICPS (fairing gone, capsule exposed)
+        orion.visible = true;
+        // Position Orion on top of the SLS ICPS stage
+        // The ICPS top is at ~1.8*S above SLS origin in local coords
+        // We need to place Orion in world space matching SLS position + offset along its up axis
+        const slsUp = new THREE.Vector3(0, 1, 0).applyQuaternion(sls.quaternion);
+        orion.position.copy(pt).add(slsUp.multiplyScalar(0.9)); // offset to sit on ICPS
+        orion.quaternion.copy(sls.quaternion); // same orientation as SLS
+      } else {
+        sls.userData.fairingGroup.visible = true;
+        orion.visible = false;
+      }
+
+    } else {
+      // --- Free flight: Orion visible, SLS hidden ---
+      sls.visible = false;
+      sls.userData.srbDebrisL.visible = false;
+      sls.userData.srbDebrisR.visible = false;
+      sls.userData.coreDebris.visible = false;
+      orion.visible = true;
+      orion.position.copy(pt);
+
+      // After CM/SM separation (~curveT 0.87), hide service module — only crew module descends
+      orion.userData.smGroup.visible = curveT < 0.87;
+
+      if(curveT > 0.87){
+        // Re-entry: heat shield forward (nose points opposite to travel direction)
+        // Use radial-from-Earth as "up" so capsule belly faces atmosphere
+        const reUp = pt.clone().normalize();
+        const reDir = dir.clone().negate(); // nose points backward (heat shield leads)
+        const reRight = new THREE.Vector3().crossVectors(reDir, reUp).normalize();
+        if(reRight.length() < 0.01) reRight.copy(right);
+        const reCorrUp = new THREE.Vector3().crossVectors(reRight, reDir).normalize();
+        mtx.makeBasis(reRight, reDir, reCorrUp);
+      } else {
+        mtx.makeBasis(right, dir, correctedUp);
+      }
+      orion.quaternion.setFromRotationMatrix(mtx);
+
+      // Orion engine plume during TLI burn
+      const burning = (curveT > 0.15 && curveT < 0.175);
+      orion.userData.plume.visible = burning;
+      orion.userData.plumeGlow.visible = burning;
+      if(burning){
+        const flicker = 0.4 + Math.random() * 0.6;
+        orion.userData.plume.material.opacity = 0.5 * flicker;
+        orion.userData.plumeGlow.material.opacity = 0.15 * flicker;
+        orion.userData.plume.scale.y = 0.8 + Math.random() * 0.4;
+      }
+    }
+
+    // Trail
+    trailBuf[trailIdx*3]=pt.x; trailBuf[trailIdx*3+1]=pt.y; trailBuf[trailIdx*3+2]=pt.z;
+    trailIdx = (trailIdx+1) % TRAIL_N;
+    trailGeo.attributes.position.needsUpdate = true;
+    trailGeo.setDrawRange(0,Math.min(trailIdx+1,TRAIL_N));
+
+    // Follow view — position camera on space-side so Earth doesn't block
+    if(currentView==='follow'){
+      tgtTarget = pt.clone();
+      // Near Earth (launch ascent or re-entry), auto-position camera on the outward side
+      // so we look at the spacecraft with Earth as backdrop, not blocking the view
+      const nearEarth = curveT < 0.03 || curveT > 0.90;
+      if(nearEarth){
+        // Compute radial direction from Earth center through spacecraft
+        const radial = pt.clone().normalize();
+        // Use a stable side offset (world Y-axis cross radial) instead of trajectory tangent
+        // This prevents camera spinning as the trajectory curves during orbit
+        const worldRef = new THREE.Vector3(0, 1, 0); // stable world reference
+        const stableSide = new THREE.Vector3().crossVectors(radial, worldRef).normalize();
+        if(stableSide.length() < 0.01) stableSide.set(1, 0, 0); // fallback if parallel
+        // Blend: mostly radial (outward) + some side offset for a gentle angle
+        const outWeight = curveT > 0.90 ? 0.85 : 0.8; // high radial weight keeps camera above Earth
+        const sideWeight = 1.0 - outWeight;
+        const camDir = radial.clone().multiplyScalar(outWeight).add(stableSide.clone().multiplyScalar(sideWeight)).normalize();
+        tgtTheta = Math.atan2(camDir.z, camDir.x);
+        tgtPhi = Math.acos(Math.max(-1, Math.min(1, camDir.y)));
+        // Close camera distance
+        if(curveT < 0.03){
+          tgtDist = curveT < 0.005 ? 4 : 6;
+        } else {
+          // Re-entry: capsule model is ~2.5 units tall, so min dist ~4 for good framing
+          if(curveT > 0.997) tgtDist = 3;          // splashdown — close dramatic view
+          else if(curveT > 0.99) tgtDist = 4;       // final approach
+          else if(curveT > 0.96) tgtDist = 5;       // deep re-entry
+          else tgtDist = 6;                           // early re-entry approach
+        }
+        // Snap camera directly to auto-camera position (no lerp lag)
+        cameraSnap = true;
+      }
+    }
+
+    // Stats
+    const dE = pt.length()*1000;
+    const dM = pt.distanceTo(moon.position)*1000;
+    let vel;
+    // Velocity estimates based on curve position (not time progress)
+    if(curveT<0.025) vel = 1000 + (curveT/0.025)*27000; // launch: 1000→28000 km/h
+    else if(curveT<0.15) vel = 28000; // orbit
+    else if(curveT<0.175) vel = 38500; // TLI burn
+    else if(curveT<0.48) vel = 4000+(0.48-curveT)*50000; // outbound coast (decelerating)
+    else if(curveT<0.55) vel = 7500; // lunar flyby
+    else vel = 3500+(curveT-0.55)*55000; // return (accelerating)
+
+    document.getElementById('s-alt').textContent = dE < 50000 ? Math.round(dE-6371).toLocaleString()+' km' : Math.round(dE).toLocaleString()+' km';
+    document.getElementById('s-vel').textContent = Math.round(vel).toLocaleString()+' km/h';
+    document.getElementById('s-de').textContent = Math.round(dE).toLocaleString()+' km';
+    document.getElementById('s-dm').textContent = Math.round(dM).toLocaleString()+' km';
+
+    const stEl = document.getElementById('s-status');
+    if(curveT>0.96){ stEl.textContent='RE-ENTRY'; stEl.className='stat-value warn'; }
+    else { stEl.textContent='NOMINAL'; stEl.className='stat-value ok'; }
+  } else if(progress < 0){
+    // Pre-launch: SLS on the pad
+    sls.visible = true;
+    sls.position.copy(kscP).multiplyScalar(1.01);
+    // Point rocket radially outward (up from pad)
+    const padUp = kscP.clone().normalize();
+    const padRight = new THREE.Vector3().crossVectors(padUp, new THREE.Vector3(0,0,1)).normalize();
+    const padFwd = new THREE.Vector3().crossVectors(padRight, padUp).normalize();
+    const padMtx = new THREE.Matrix4().makeBasis(padRight, padUp, padFwd);
+    sls.quaternion.setFromRotationMatrix(padMtx);
+    // No flames pre-launch
+    sls.userData.coreFlame.visible = false;
+    sls.userData.coreFlameG.visible = false;
+    sls.userData.srbLeft.userData.flame.visible = false;
+    sls.userData.srbLeft.userData.flameG.visible = false;
+    sls.userData.srbRight.userData.flame.visible = false;
+    sls.userData.srbRight.userData.flameG.visible = false;
+    sls.userData.srbLeft.visible = true;
+    sls.userData.srbRight.visible = true;
+    sls.userData.coreGroup.visible = true;
+    sls.userData.fairingGroup.visible = true;
+    orion.visible = false;
+    document.getElementById('s-alt').textContent='0 km';
+    document.getElementById('s-vel').textContent='0 km/h';
+    document.getElementById('s-de').textContent='6,371 km';
+    document.getElementById('s-dm').textContent='384,400 km';
+  } else {
+    // Post-splashdown: show Orion at its final position on the water
+    sls.visible = false;
+    sls.userData.srbDebrisL.visible = false;
+    sls.userData.srbDebrisR.visible = false;
+    sls.userData.coreDebris.visible = false;
+    // Keep Orion visible at splashdown location
+    const splashPt = trajCurve.getPointAt(0.999);
+    orion.visible = true;
+    orion.position.copy(splashPt);
+    // Orient capsule upright (nose up, radially outward from Earth)
+    const splashUp = splashPt.clone().normalize();
+    const splashSide = new THREE.Vector3(0, 1, 0);
+    const splashRight = new THREE.Vector3().crossVectors(splashUp, splashSide).normalize();
+    if(splashRight.length() < 0.01) splashRight.set(1, 0, 0);
+    const splashFwd = new THREE.Vector3().crossVectors(splashRight, splashUp).normalize();
+    const splashMtx = new THREE.Matrix4().makeBasis(splashRight, splashUp, splashFwd);
+    orion.quaternion.setFromRotationMatrix(splashMtx);
+    orion.userData.plume.visible = false;
+    orion.userData.plumeGlow.visible = false;
+    orion.userData.smGroup.visible = false; // SM already jettisoned
+    // Auto-camera for splashdown
+    if(currentView==='follow'){
+      tgtTarget = splashPt.clone();
+      const radial = splashPt.clone().normalize();
+      const worldRef = new THREE.Vector3(0, 1, 0);
+      const stableSide = new THREE.Vector3().crossVectors(radial, worldRef).normalize();
+      if(stableSide.length() < 0.01) stableSide.set(1, 0, 0);
+      const camDir = radial.clone().multiplyScalar(0.85).add(stableSide.clone().multiplyScalar(0.15)).normalize();
+      tgtTheta = Math.atan2(camDir.z, camDir.x);
+      tgtPhi = Math.acos(Math.max(-1, Math.min(1, camDir.y)));
+      tgtDist = 3;
+      cameraSnap = true;
+    }
+    const stEl = document.getElementById('s-status');
+    stEl.textContent='SPLASHDOWN'; stEl.className='stat-value hl';
+  }
+
+  // Keyboard input
+  processKeys();
+
+  // Camera
+  if(cameraSnap){
+    camTheta = tgtTheta;
+    camPhi = tgtPhi;
+    camDist = tgtDist;
+    camTarget.copy(tgtTarget);
+    cameraSnap = false;
+  } else {
+    const lp = Math.min(1,dt*3);
+    camTheta += (tgtTheta-camTheta)*lp;
+    camPhi += (tgtPhi-camPhi)*lp;
+    camDist += (tgtDist-camDist)*lp;
+    camTarget.lerp(tgtTarget,lp);
+  }
+
+  camera.position.set(
+    camTarget.x + camDist*Math.sin(camPhi)*Math.cos(camTheta),
+    camTarget.y + camDist*Math.cos(camPhi),
+    camTarget.z + camDist*Math.sin(camPhi)*Math.sin(camTheta)
+  );
+  camera.lookAt(camTarget);
+
+  renderer.render(scene,camera);
+}
+
+window.addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+
+// Init
+buildTimeline();
+setInterval(buildTimeline,4000);
+animate();
+</script>
+</body>
+</html>
