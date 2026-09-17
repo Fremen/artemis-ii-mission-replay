@@ -263,11 +263,59 @@ const EVENTS = [
 const container = document.getElementById('canvas-container');
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 50000);
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+const probeCanvas = document.createElement('canvas');
+let supportsWebGL = false;
+try {
+  supportsWebGL = Boolean(probeCanvas.getContext('webgl2') || probeCanvas.getContext('webgl'));
+} catch (_) {
+  supportsWebGL = false;
+}
+
+function makeFallbackRenderer(){
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+  function draw(){
+    const w = canvas.width, h = canvas.height;
+    const gradient = context.createRadialGradient(w*0.45,h*0.48,10,w*0.45,h*0.48,Math.max(w,h)*0.75);
+    gradient.addColorStop(0,'#10254a'); gradient.addColorStop(0.35,'#040a16'); gradient.addColorStop(1,'#000');
+    context.fillStyle=gradient; context.fillRect(0,0,w,h);
+    context.fillStyle='rgba(255,255,255,.65)';
+    for(let i=0;i<180;i++){
+      const x=(i*193)%w, y=(i*317)%h, r=(i%7===0)?1.4:.65;
+      context.beginPath(); context.arc(x,y,r,0,Math.PI*2); context.fill();
+    }
+    const earthX=w*.38, earthY=h*.53, earthR=Math.max(38,Math.min(w,h)*.075);
+    const earth=context.createRadialGradient(earthX-earthR*.3,earthY-earthR*.35,earthR*.1,earthX,earthY,earthR);
+    earth.addColorStop(0,'#68b8ff'); earth.addColorStop(.45,'#1760a8'); earth.addColorStop(1,'#07162f');
+    context.fillStyle=earth; context.beginPath(); context.arc(earthX,earthY,earthR,0,Math.PI*2); context.fill();
+    const moonX=w*.67, moonY=h*.43, moonR=earthR*.32;
+    context.fillStyle='#aeb6c2'; context.beginPath(); context.arc(moonX,moonY,moonR,0,Math.PI*2); context.fill();
+    context.strokeStyle='rgba(122,184,255,.6)'; context.lineWidth=2; context.setLineDash([8,8]);
+    context.beginPath(); context.moveTo(earthX+earthR,earthY); context.quadraticCurveTo(w*.54,h*.25,moonX-moonR,moonY); context.stroke();
+    context.setLineDash([]);
+  }
+  return {
+    domElement: canvas,
+    capabilities: { getMaxAnisotropy: () => 1 },
+    setPixelRatio: () => {},
+    setSize: (width,height) => { canvas.width=width; canvas.height=height; draw(); },
+    render: () => {}
+  };
+}
+
+const renderer = supportsWebGL
+  ? new THREE.WebGLRenderer({ antialias: true, alpha: true })
+  : makeFallbackRenderer();
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 container.appendChild(renderer.domElement);
+if(!supportsWebGL){
+  const notice=document.createElement('div');
+  notice.textContent='3D rendering is unavailable in this browser — showing the mission overview.';
+  Object.assign(notice.style,{position:'absolute',left:'50%',top:'68px',transform:'translateX(-50%)',zIndex:'2',padding:'7px 12px',border:'1px solid rgba(122,184,255,.25)',borderRadius:'8px',background:'rgba(5,12,28,.8)',color:'rgba(255,255,255,.65)',fontSize:'10px',letterSpacing:'1px'});
+  container.appendChild(notice);
+}
 
 // ---- Scale: 1 unit ≈ 1 000 km ----
 const Re = 6.371;          // Earth radius
